@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MatchAI ATS - Resume Analysis</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+        
+        .loader {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #2563eb;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        
+        .progress-ring__circle {
+            transition: stroke-dashoffset 0.8s ease-in-out;
+            transform: rotate(-90deg);
+            transform-origin: 50% 50%;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-900 pb-12">
+
+    <!-- Header -->
+    <nav class="bg-white border-b border-slate-200 px-6 py-4 sticky top-0 z-10 shadow-sm">
+        <div class="max-w-6xl mx-auto flex items-center justify-between">
+            <div class="flex items-center gap-2">
+                <div class="bg-blue-600 p-2 rounded-lg">
+                    <i class="fas fa-bullseye text-white"></i>
+                </div>
+                <h1 class="text-xl font-bold tracking-tight">MatchAI <span class="text-blue-600">ATS</span></h1>
+            </div>
+            <div class="hidden md:block text-sm text-slate-500 font-medium">
+                AI-Powered Recruitment Intelligence
+            </div>
+        </div>
+    </nav>
+
+    <main class="max-w-6xl mx-auto mt-8 px-6">
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            
+            <!-- Left Column: Input -->
+            <form id="uploadForm" class="space-y-6">
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                    <div class="flex items-center gap-2 mb-4">
+                        <i class="far fa-file-alt text-blue-600"></i>
+                        <h2 class="font-semibold text-lg">Resume Upload</h2>
+                    </div>
+                    
+                    <div id="dropZone" class="relative border-2 border-dashed border-slate-200 rounded-xl p-8 transition-colors hover:border-blue-400 group cursor-pointer text-center">
+                        <input type="file" id="fileInput" name="resume" class="absolute inset-0 opacity-0 cursor-pointer" accept=".pdf" required>
+                        <i class="fas fa-file-pdf text-3xl text-slate-400 group-hover:text-blue-500 mb-2 transition-colors"></i>
+                        <p id="fileNameDisplay" class="text-sm font-medium text-slate-600">Click to upload Resume PDF</p>
+                        <p class="text-xs text-slate-400 mt-1">Required for backend PDF parsing</p>
+                    </div>
+                </div>
+
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                    <div class="flex items-center gap-2 mb-4">
+                        <i class="fas fa-briefcase text-blue-600"></i>
+                        <h2 class="font-semibold text-lg">Job Description</h2>
+                    </div>
+                    <textarea id="jobDescription" name="job_description" class="w-full h-64 p-4 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all resize-none" placeholder="Paste the target job description here..." required></textarea>
+                </div>
+
+                <button type="submit" id="analyzeBtn" class="w-full py-4 rounded-xl font-bold text-white shadow-lg bg-blue-600 hover:bg-blue-700 hover:scale-[1.01] active:scale-[0.99] transition-all flex items-center justify-center gap-2">
+                    <span id="btnText">Analyze Match Score</span>
+                    <i id="btnIcon" class="fas fa-chevron-right"></i>
+                </button>
+                
+                <div id="errorBox" class="hidden flex items-start gap-3 p-4 bg-red-50 border border-red-100 rounded-xl text-red-600 text-sm">
+                    <i class="fas fa-exclamation-circle mt-0.5"></i>
+                    <p id="errorMessage"></p>
+                </div>
+            </form>
+
+            <!-- Right Column: Results -->
+            <div id="resultsContainer" class="space-y-6">
+                <!-- Initial State -->
+                <div id="emptyState" class="h-full flex flex-col items-center justify-center text-center p-12 bg-white rounded-2xl border-2 border-dashed border-slate-200 text-slate-400">
+                    <i class="fas fa-crosshairs text-5xl mb-4 opacity-20"></i>
+                    <p class="text-lg font-medium text-slate-500">Analysis Results</p>
+                    <p class="text-sm">Upload your PDF resume to start the Flask analysis</p>
+                </div>
+
+                <!-- Loading State -->
+                <div id="loadingState" class="hidden h-full flex flex-col items-center justify-center space-y-4 p-12 bg-white rounded-2xl border border-slate-200">
+                    <div class="loader"></div>
+                    <div class="text-center">
+                        <p class="font-bold text-slate-700">Backend is Processing...</p>
+                        <p class="text-sm text-slate-500">Extracting text and matching via Gemini</p>
+                    </div>
+                </div>
+
+                <!-- Actual Results (Hidden by default) -->
+                <div id="resultsData" class="hidden space-y-6">
+                    <!-- Score Card -->
+                    <div class="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 text-center relative overflow-hidden">
+                        <div class="absolute top-0 right-0 p-4">
+                            <i id="trophyIcon" class="fas fa-trophy text-2xl text-slate-200"></i>
+                        </div>
+                        <p class="text-sm font-bold text-slate-400 uppercase tracking-widest mb-2">Overall Match Score</p>
+                        <div class="relative inline-flex items-center justify-center">
+                            <svg class="w-32 h-32">
+                                <circle class="text-slate-100" stroke-width="8" stroke="currentColor" fill="transparent" r="58" cx="64" cy="64"/>
+                                <circle id="scoreRing" class="progress-ring__circle" stroke-width="8" stroke-dasharray="364.4" stroke-dashoffset="364.4" stroke-linecap="round" stroke="currentColor" fill="transparent" r="58" cx="64" cy="64"/>
+                            </svg>
+                            <span id="scoreText" class="absolute text-3xl font-black text-slate-800">0%</span>
+                        </div>
+                    </div>
+
+                    <!-- Gemini Raw Analysis (Formatted) -->
+                    <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                        <h3 class="font-bold mb-4 flex items-center gap-2">
+                            <i class="fas fa-robot text-blue-500"></i>
+                            ATS Detailed Analysis
+                        </h3>
+                        <div id="atsMatchText" class="text-sm text-slate-600 leading-relaxed whitespace-pre-wrap"></div>
+                    </div>
+
+                    <!-- Toggle Section: Parsed Data -->
+                    <div class="bg-slate-100 p-4 rounded-xl">
+                        <details class="group">
+                            <summary class="text-xs font-bold text-slate-500 uppercase cursor-pointer list-none flex justify-between items-center">
+                                View Parsed Data (Debug)
+                                <i class="fas fa-chevron-down group-open:rotate-180 transition-transform"></i>
+                            </summary>
+                            <div class="mt-4 grid grid-cols-1 gap-4">
+                                <div>
+                                    <h4 class="text-xs font-bold text-slate-400 mb-1">Parsed Resume</h4>
+                                    <div id="parsedResume" class="text-[10px] bg-white p-2 border rounded max-h-32 overflow-y-auto whitespace-pre-wrap"></div>
+                                </div>
+                                <div>
+                                    <h4 class="text-xs font-bold text-slate-400 mb-1">Parsed Job</h4>
+                                    <div id="parsedJD" class="text-[10px] bg-white p-2 border rounded max-h-32 overflow-y-auto whitespace-pre-wrap"></div>
+                                </div>
+                            </div>
+                        </details>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        const uploadForm = document.getElementById('uploadForm');
+        const fileInput = document.getElementById('fileInput');
+        const fileNameDisplay = document.getElementById('fileNameDisplay');
+        const analyzeBtn = document.getElementById('analyzeBtn');
+        const errorBox = document.getElementById('errorBox');
+        const errorMessage = document.getElementById('errorMessage');
+
+        // Note: If you are running Flask on a different port than the one serving this HTML,
+        // you should change the URL below to include the full path: http://127.0.0.1:8080/analyze
+        const API_ENDPOINT = '/analyze'; 
+
+        // File handling UI
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                fileNameDisplay.textContent = `Selected: ${file.name}`;
+                fileNameDisplay.classList.add('text-blue-600', 'font-bold');
+            }
+        });
+
+        uploadForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            // UI State - Loading
+            errorBox.classList.add('hidden');
+            document.getElementById('emptyState').classList.add('hidden');
+            document.getElementById('resultsData').classList.add('hidden');
+            document.getElementById('loadingState').classList.remove('hidden');
+            analyzeBtn.disabled = true;
+            document.getElementById('btnText').textContent = "Processing PDF...";
+
+            const formData = new FormData(uploadForm);
+
+            try {
+                // Connecting to Flask backend
+                const response = await fetch(API_ENDPOINT, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    if (response.status === 404) {
+                        throw new Error("404: The '/analyze' route was not found. Please ensure your Flask server is running and the route is defined correctly.");
+                    }
+                    const errData = await response.json().catch(() => ({}));
+                    throw new Error(errData.error || `Server error: ${response.status}`);
+                }
+
+                const data = await response.json();
+                displayResults(data);
+            } catch (err) {
+                console.error("Submission error:", err);
+                errorBox.classList.remove('hidden');
+                errorMessage.textContent = err.message;
+                document.getElementById('emptyState').classList.remove('hidden');
+            } finally {
+                document.getElementById('loadingState').classList.add('hidden');
+                analyzeBtn.disabled = false;
+                document.getElementById('btnText').textContent = "Analyze Match Score";
+            }
+        });
+
+        function displayResults(data) {
+            document.getElementById('resultsData').classList.remove('hidden');
+            
+            // Extract match score using Regex from the ats_result string
+            const atsContent = data.ats_result;
+            const scoreMatch = atsContent.match(/(\d+)%/);
+            const percentage = scoreMatch ? parseInt(scoreMatch[1]) : 0;
+            
+            // Update Score Visualization
+            const scoreText = document.getElementById('scoreText');
+            const scoreRing = document.getElementById('scoreRing');
+            scoreText.textContent = `${percentage}%`;
+            
+            const offset = 364.4 - (364.4 * percentage / 100);
+            scoreRing.style.strokeDashoffset = offset;
+
+            // Color coding ring
+            if (percentage > 75) scoreRing.style.color = '#10b981';
+            else if (percentage > 50) scoreRing.style.color = '#f59e0b';
+            else scoreRing.style.color = '#ef4444';
+
+            // Update main analysis text
+            document.getElementById('atsMatchText').textContent = atsContent;
+
+            // Update debug fields
+            document.getElementById('parsedResume').textContent = data.parsed_resume;
+            document.getElementById('parsedJD').textContent = data.parsed_job_description;
+
+            // Trophy icon color
+            document.getElementById('trophyIcon').className = `fas fa-trophy text-2xl ${percentage > 75 ? 'text-yellow-400' : 'text-slate-200'}`;
+        }
+    </script>
+</body>
+</html>
